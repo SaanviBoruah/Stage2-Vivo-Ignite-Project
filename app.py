@@ -10,7 +10,7 @@ st.set_page_config(page_title="Real-time Emotion Detection", layout="wide")
 st.title("🎭 Real-time Facial Emotion Detection")
 
 # Initialize detector
-detector = FER()
+detector = FER(mtcnn=True)
 
 # Webcam input
 img_file_buffer = st.camera_input("Take a picture for emotion analysis")
