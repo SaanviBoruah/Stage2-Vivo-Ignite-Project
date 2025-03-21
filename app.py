@@ -99,7 +99,7 @@ def chat_interface():
     
     if not st.session_state.current_character:
         st.markdown("""
-    <div style="background:#EAEAED; padding:10px; border-radius:10px; margin-bottom:20px">
+    <div style="background:#EAEAED; padding:10px; border-radius:10px; margin-bottom:20px; text-align:center">
     <strong style="color: #ff4c4b">Chatbot Not Selected!</strong> Please select your desired support chatbot.
     </div>
     """, unsafe_allow_html=True)
