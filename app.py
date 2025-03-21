@@ -88,7 +88,7 @@ def character_selection_ui():
 
 def chat_interface():
     """Main chat interface"""
-    st.header("Chat Interface")
+    st.title("Emotional Support Chatbot 💬")
 
     st.sidebar.markdown("""
         <div style="background:#EAEAED; padding:10px; text-align: center; border-radius:10px; border:2px solid #55E4C4; margin-bottom:20px">
