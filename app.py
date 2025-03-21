@@ -1,52 +1,164 @@
-import streamlit as st
 import os
-os.environ["OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS"] = "0"
-import cv2
-import numpy as np
-from fer import FER
+import sqlite3
+import streamlit as st
+from dotenv import load_dotenv
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.prompts import PromptTemplate
 
-# Set up the app
-st.set_page_config(page_title="Real-time Emotion Detection", layout="wide")
-st.title("🎭 Real-time Facial Emotion Detection")
+# Set page config FIRST
+st.set_page_config(page_title="Character Chatbot", layout="wide")
 
-# Initialize detector
-detector = FER(mtcnn=True)
+# Initialize environment and LLM
+load_dotenv()
+llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash-lite", temperature=0.7)
 
-# Webcam input
-img_file_buffer = st.camera_input("Take a picture for emotion analysis")
+# Initialize session state
+if "characters" not in st.session_state:
+    st.session_state.characters = {}
+if "current_character" not in st.session_state:
+    st.session_state.current_character = None
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = {}
 
-if img_file_buffer is not None:
-    # Convert buffer to OpenCV format
-    bytes_data = img_file_buffer.getvalue()
-    cv2_img = cv2.imdecode(np.frombuffer(bytes_data, np.uint8), cv2.IMREAD_COLOR)
+# Database setup
+DATABASE_FILE = "prebuilt_characters.db"
+
+@st.cache_resource
+def load_prebuilt_characters():
+    """Load prebuilt characters from SQLite database"""
+    characters = {}
+    if os.path.exists(DATABASE_FILE):
+        conn = sqlite3.connect(DATABASE_FILE)
+        cursor = conn.cursor()
+        cursor.execute('SELECT name, personality, backstory, examples, category FROM prebuilt_characters')
+        for name, personality, backstory, examples, category in cursor.fetchall():
+            characters[name] = {
+                "name": name,
+                "personality": personality,
+                "backstory": backstory,
+                "examples": examples,
+                "category": category
+            }
+        conn.close()
+    return characters
+
+# Load prebuilt characters once
+prebuilt_chars = load_prebuilt_characters()
+st.session_state.characters.update(prebuilt_chars)
+
+
+def character_selection_ui():
+    """Sidebar UI for support type selection"""
+    st.sidebar.header("Mental Support Chatbot")
     
-    # Detect emotions
-    results = detector.detect_emotions(cv2_img)
+    # Group characters by category
+    categories = {
+        "Assistants": [],
+        "Anime": [],
+        "Entertainment & Gaming": [],
+        "Custom": [],
+        "Mental Wellness": []
+    }
     
-    # Draw results
-    for face in results:
-        x, y, w, h = face["box"]
-        emotions = face["emotions"]
-        dominant_emotion = max(emotions, key=emotions.get)
-        confidence = emotions[dominant_emotion]
+    for name, data in st.session_state.characters.items():
+        category = data.get("category", "Custom")
+        if category in categories:
+            categories[category].append((name, data))
+        else:
+            categories["Custom"].append((name, data))
+    
+    # Category selection
+    selected_category = "Mental Wellness"
+    
+    # Character selection
+    if selected_category:
+
+        selected_char = st.sidebar.radio(
+            "Select Support Type",
+            [name for name, _ in categories[selected_category]]
+        )
         
-        # Draw rectangle and text
-        cv2.rectangle(cv2_img, (x, y), (x+w, y+h), (0, 255, 0), 2)
-        cv2.putText(cv2_img, 
-                   f"{dominant_emotion} ({confidence:.0%})", 
-                   (x, y-10), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 
-                   0.9, (0,255,0), 2)
+        if st.sidebar.button("Select Character"):
+            st.session_state.current_character = st.session_state.characters[selected_char]
+            st.session_state.chat_history[selected_char] = st.session_state.chat_history.get(selected_char, [])
+            st.rerun()
+
+def chat_interface():
+    """Main chat interface"""
+    st.header("Chat Interface")
     
-    # Display processed image
-    st.image(cv2_img, channels="BGR", caption="Processed Image")
+    if not st.session_state.current_character:
+        st.info("Please select a character from the sidebar")
+        return
     
-    # Show detailed emotions
-    st.subheader("Emotion Analysis Results")
-    if results:
-        for i, face in enumerate(results):
-            st.write(f"**Face {i+1}**")
-            for emotion, score in face["emotions"].items():
-                st.progress(score, text=f"{emotion.capitalize()}: {score:.2%}")
-    else:
-        st.warning("No faces detected in the image")
+    char = st.session_state.current_character
+    history = st.session_state.chat_history[char["name"]]
+    
+    # Character info
+    with st.expander("Character Details"):
+        st.subheader(char["name"])
+        st.caption(f"{char.get('category', 'Custom')} Chatbot")
+        st.write(f"**Personality**: {char['personality']}")
+        st.write(f"**Backstory**: {char['backstory']}")
+    
+    # Chat history
+    for msg in history:
+        with st.chat_message("user"):
+            st.write(msg["user"])
+        with st.chat_message("assistant"):
+            st.write(f"{char['name']}: {msg['bot']}")
+    
+    # User input
+    if prompt := st.chat_input("Type your message..."):
+        # Generate response
+        history_context = "\n".join(
+            [f"User: {msg['user']}\n{char['name']}: {msg['bot']}" 
+             for msg in history]
+        ) if history else "No previous conversation"
+        
+        prompt_template = PromptTemplate.from_template(
+            """You are {name}, a character with these personality traits: {personality}.
+    Backstory: {backstory}
+    Example dialogues: {examples}
+
+    Previous conversation:
+    {history}
+
+    Stay in character and respond to this message:
+    User: {input}
+    {name}:"""
+        )
+
+        try:
+            response = prompt_template | llm
+            result = response.invoke({
+                "name": char["name"],
+                "personality": char["personality"],
+                "backstory": char["backstory"],
+                "examples": char["examples"],
+                "history": history_context,
+                "input": prompt
+            })
+            bot_response = result.content.strip()
+            
+            # Update history
+            history.append({"user": prompt, "bot": bot_response})
+            
+            # Rerun to show new messages
+            st.rerun()
+        except Exception as e:
+            st.error(f"Error generating response: {str(e)}")
+
+def main():
+    if not os.getenv("GOOGLE_API_KEY"):
+        st.error("Please set your GOOGLE_API_KEY in .env file!")
+        return
+    
+    # Sidebar components
+    character_selection_ui()
+    
+    # Main chat interface
+    chat_interface()
+
+if __name__ == "__main__":
+    main()
