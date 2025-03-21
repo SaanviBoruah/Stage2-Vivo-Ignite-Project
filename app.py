@@ -86,6 +86,12 @@ def character_selection_ui():
 def chat_interface():
     """Main chat interface"""
     st.header("Chat Interface")
+
+    st.sidebar.markdown("""
+        <div style="background:#EAEAED; padding:10px; text-align: center; border-radius:10px; border:2px solid #55E4C4; margin-bottom:20px">
+        Built by <strong style="color:#ff4c4b">Saanvi Boruah</strong>. Project submission: <strong style="color:#ff4c4b">Multi-modal emotional wellbeing analysis suite</strong> for Vivo Ignite.
+        </div>
+        """, unsafe_allow_html=True)
     
     if not st.session_state.current_character:
         st.info("Please select a character from the sidebar")
