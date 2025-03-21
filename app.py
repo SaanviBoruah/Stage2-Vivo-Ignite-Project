@@ -98,7 +98,11 @@ def chat_interface():
     st.title("Emotional Support Chatbot 💬")
     
     if not st.session_state.current_character:
-        st.info("Please select a character from the sidebar")
+        st.markdown("""
+    <div style="background:#EAEAED; padding:10px; border-radius:10px; margin-bottom:20px">
+    <strong style="color: #ff4c4b">Privacy Notice:</strong> Please select your desired support chatbot.
+    </div>
+    """, unsafe_allow_html=True)
         return
     
     char = st.session_state.current_character
